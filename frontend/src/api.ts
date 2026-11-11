@@ -1,0 +1,24 @@
+const BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+export type User = { id:string; name:string; email:string };
+export type Project = { id:string; name:string; description?:string|null; applicationName?:string|null; environment?:string|null; createdAt:string; _count?:{suites:number;testCases:number} };
+export type Suite = { id:string; projectId:string; name:string; description?:string|null; feature?:string|null; createdAt:string; project?:Project };
+export type TestCase = { id:string; projectId:string; suiteId?:string|null; preconditions?:string|null; steps?:string[]; title:string; description?:string|null; expectedResult:string; priority:'LOW'|'MEDIUM'|'HIGH'|'CRITICAL'; type:string; status:'DRAFT'|'READY'|'DEPRECATED'; createdAt:string; project?:Project; suite?:Suite|null };
+export type Summary = { totals:{projects:number;suites:number;testCases:number;executions:number}; testCasesByPriority:Record<string,number>; testCasesByStatus:Record<string,number>; executionsByStatus:Record<string,number>; latestResults:{PASSED:number;FAILED:number;BLOCKED:number;SKIPPED:number;notRun:number}; passRate:number|null };
+export type Credential = {id:string;name:string;createdAt:string;lastUsedAt?:string|null;revokedAt?:string|null};
+export type Execution = {id:string;status:string;executionNotes?:string|null;executedAt:string;executedBy?:string|null};
+export type Page<T> = {items:T[];meta:{page:number;limit:number;total:number;pages:number}};
+let token = localStorage.getItem('testflow_token');
+export function setToken(value:string|null){token=value; value?localStorage.setItem('testflow_token',value):localStorage.removeItem('testflow_token');}
+async function request<T>(path:string, init:RequestInit={}):Promise<T>{
+ const headers = new Headers(init.headers); if(init.body) headers.set('Content-Type','application/json'); if(token) headers.set('Authorization',`Bearer ${token}`);
+ const res=await fetch(`${BASE}${path}`,{...init,headers}); if(res.status===204)return undefined as T;
+ const json=await res.json().catch(()=>({})); if(!res.ok)throw new Error(json.error?.message||`Request failed (${res.status})`); return (json.meta ? (Array.isArray(json.data) ? {items:json.data,meta:json.meta} : {...json.data,meta:json.meta}) : json.data) as T;
+}
+const query=(v:Record<string,string|number|undefined>)=>{const p=new URLSearchParams();Object.entries(v).forEach(([k,x])=>x!==undefined&&x!==''&&p.set(k,String(x)));const s=p.toString();return s?`?${s}`:''};
+export const api={
+ me:()=>request<User>('/api/auth/me'), login:(email:string,password:string)=>request<{token:string;user:User}>('/api/auth/login',{method:'POST',body:JSON.stringify({email,password})}), register:(name:string,email:string,password:string,workspaceName?:string)=>request<{token:string;user:User}>('/api/auth/register',{method:'POST',body:JSON.stringify({name,email,password,workspaceName})}), logout:()=>request<void>('/api/auth/logout',{method:'POST'}),
+ projects:()=>request<Project[]>('/api/projects'), project:(id:string)=>request<Project>(`/api/projects/${id}`), createProject:(data:Partial<Project>)=>request<Project>('/api/projects',{method:'POST',body:JSON.stringify(data)}), updateProject:(id:string,data:Partial<Project>)=>request<Project>(`/api/projects/${id}`,{method:'PUT',body:JSON.stringify(data)}), deleteProject:(id:string)=>request<void>(`/api/projects/${id}`,{method:'DELETE'}),
+ suites:(projectId?:string)=>request<Suite[]>(`/api/suites${query({projectId})}`), createSuite:(data:Partial<Suite>)=>request<Suite>('/api/suites',{method:'POST',body:JSON.stringify(data)}), updateSuite:(id:string,data:Partial<Suite>)=>request<Suite>(`/api/suites/${id}`,{method:'PUT',body:JSON.stringify(data)}), deleteSuite:(id:string)=>request<void>(`/api/suites/${id}`,{method:'DELETE'}),
+ cases:(filters:Record<string,string|number|undefined>={})=>request<Page<TestCase>>(`/api/test-cases${query(filters)}`), testCase:(id:string)=>request<TestCase>(`/api/test-cases/${id}`), createCase:(data:Partial<TestCase>)=>request<TestCase>('/api/test-cases',{method:'POST',body:JSON.stringify(data)}), updateCase:(id:string,data:Partial<TestCase>)=>request<TestCase>(`/api/test-cases/${id}`,{method:'PUT',body:JSON.stringify(data)}), deleteCase:(id:string)=>request<void>(`/api/test-cases/${id}`,{method:'DELETE'}), execute:(id:string,status:string,executionNotes:string)=>request<Execution>(`/api/test-cases/${id}/execute`,{method:'POST',body:JSON.stringify({status,executionNotes})}), executions:(id:string)=>request<Execution[]>(`/api/test-cases/${id}/executions`),
+ summary:()=>request<Summary>('/api/reports/summary'), credentials:()=>request<Credential[]>('/api/mcp-credentials'), createCredential:(name:string)=>request<Credential&{token:string}>('/api/mcp-credentials',{method:'POST',body:JSON.stringify({name})}), revokeCredential:(id:string)=>request<void>(`/api/mcp-credentials/${id}`,{method:'DELETE'}), exportUrl:()=>`${BASE}/api/reports/export`
+};

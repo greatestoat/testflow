@@ -1,0 +1,166 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum TestType {
+  FUNCTIONAL
+  REGRESSION
+  SMOKE
+  INTEGRATION
+  E2E
+  PERFORMANCE
+  SECURITY
+}
+
+enum TestStatus {
+  DRAFT
+  READY
+  DEPRECATED
+}
+
+enum ExecStatus {
+  PASSED
+  FAILED
+  BLOCKED
+  SKIPPED
+}
+
+model User {
+  id           String            @id @default(auto()) @map("_id") @db.ObjectId
+  email        String            @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  memberships  WorkspaceMember[]
+  executions   TestExecution[]
+}
+
+model Workspace {
+  id          String            @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  createdAt   DateTime          @default(now())
+  members     WorkspaceMember[]
+  projects    Project[]
+  suites      TestSuite[]
+  testCases   TestCase[]
+  executions  TestExecution[]
+  credentials McpCredential[]
+}
+
+model WorkspaceMember {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  workspaceId String    @db.ObjectId
+  userId      String    @db.ObjectId
+  role        Role      @default(MEMBER)
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+}
+
+model Project {
+  id              String      @id @default(auto()) @map("_id") @db.ObjectId
+  workspaceId     String      @db.ObjectId
+  name            String
+  description     String?
+  applicationName String?
+  environment     String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  workspace       Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  suites          TestSuite[]
+  testCases       TestCase[]
+
+  @@index([workspaceId])
+}
+
+model TestSuite {
+  id          String     @id @default(auto()) @map("_id") @db.ObjectId
+  workspaceId String     @db.ObjectId
+  projectId   String     @db.ObjectId
+  name        String
+  description String?
+  feature     String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  testCases   TestCase[]
+
+  @@index([workspaceId, projectId])
+}
+
+model TestCase {
+  id             String          @id @default(auto()) @map("_id") @db.ObjectId
+  workspaceId    String          @db.ObjectId
+  projectId      String          @db.ObjectId
+  suiteId        String?         @db.ObjectId
+  title          String
+  description    String?
+  preconditions  String?
+  steps          String[]
+  expectedResult String
+  priority       Priority        @default(MEDIUM)
+  type           TestType        @default(FUNCTIONAL)
+  status         TestStatus      @default(DRAFT)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  suite          TestSuite?      @relation(fields: [suiteId], references: [id], onDelete: SetNull)
+  executions     TestExecution[]
+
+  @@index([workspaceId, projectId])
+  @@index([suiteId])
+}
+
+model TestExecution {
+  id             String     @id @default(auto()) @map("_id") @db.ObjectId
+  workspaceId    String     @db.ObjectId
+  testCaseId     String     @db.ObjectId
+  status         ExecStatus
+  executionNotes String?
+  executedAt     DateTime   @default(now())
+  executedById   String?    @db.ObjectId
+  executedBy     String?
+  workspace      Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  testCase       TestCase   @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  user           User?      @relation(fields: [executedById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([testCaseId, executedAt])
+}
+
+model McpCredential {
+  id             String    @id @default(auto()) @map("_id") @db.ObjectId
+  workspaceId    String    @db.ObjectId
+  credentialHash String    @unique
+  name           String
+  createdAt      DateTime  @default(now())
+  lastUsedAt     DateTime?
+  revokedAt      DateTime?
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
